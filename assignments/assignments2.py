@@ -1,130 +1,96 @@
 import sys
 import os
-# Thêm đường dẫn thư mục gốc để Python tìm thấy thư mục utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
-# Import các hàm từ thư mục utils của bạn
-from preprocess_data.data_loader import load_mnist_data
-from preprocess_data.preprocess import preprocess_multiclass
-from preprocess_data.metrics import calculate_multiclass_metrics
+from preprocess_data import load_mnist_data, preprocess_multiclass, calculate_multiclass_metrics
 
+# Mô hình Softmax Regression cho bài toán phân loại đa lớp (10 lớp số 0-9)
 class SoftmaxRegression:
-    """
-    Softmax Regression (Multiclass) using Gradient Descent
-    """
     def __init__(self, epoch=500, lr=0.01, num_classes=10):
-        self.epoch = epoch
-        self.lr = lr
-        self.num_classes = num_classes
-        self.weights = None
-        self.losses = []
-    
-    def _softmax(self, z):
-        """Softmax activation function"""
-        z_shifted = z - np.max(z, axis=1, keepdims=True)
-        exp_z = np.exp(z_shifted)
+        self.epoch = epoch              
+        self.lr = lr                     
+        self.num_classes = num_classes  
+        self.weights = None              
+        self.losses = []    
+
+    # Hàm kích hoạt Softmax: Biến đổi mảng giá trị đầu ra (Z) thành phân bố xác suất.    
+    def softmax(self, z):
+        z_stable = z - np.max(z, axis=1, keepdims=True)
+        exp_z = np.exp(z_stable)
         return exp_z / np.sum(exp_z, axis=1, keepdims=True)
     
-    def _loss_fn(self, y_onehot, y_pred):
-        """Cross-entropy loss"""
-        epsilon = 1e-8
-        y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
-        loss = -np.mean(np.sum(y_onehot * np.log(y_pred), axis=1))
-        return loss
-    
+    # Hàm huấn luyện mô hình (Tìm ma trận trọng số W tối ưu)
     def fit(self, X, y_onehot):
-        """
-        Train the model using Gradient Descent
-        
-        Parameters:
-        X: numpy array of shape (n_samples, n_features) - training data
-        y_onehot: numpy array of shape (n_samples, num_classes) - one-hot labels
-        """
-        n_samples, n_features = X.shape
-        self.weights = np.zeros((n_features, self.num_classes))
-        
-        for epoch in tqdm(range(self.epoch), desc="Training"):
-            # Forward pass
-            z = np.dot(X, self.weights)
-            y_pred = self._softmax(z)
-            
-            # Compute loss
-            loss = self._loss_fn(y_onehot, y_pred)
+        num_samples, num_features = X.shape
+        self.weights = np.zeros((num_features, self.num_classes))
+        for _ in range(self.epoch):
+            linear_model = np.dot(X, self.weights)
+            y_predicted = self.softmax(linear_model)
+            dw = (1 / num_samples) * np.dot(X.T, (y_predicted - y_onehot))
+            self.weights -= self.lr * dw
+            epsilon = 1e-9 # Thêm epsilon nhỏ vào log để tránh lỗi log(0)
+            loss = -np.mean(np.sum(y_onehot * np.log(y_predicted + epsilon), axis=1))
             self.losses.append(loss)
-            
-            # Backward pass
-            gradient = (1/n_samples) * np.dot(X.T, (y_pred - y_onehot))
-            self.weights -= self.lr * gradient
-    
-    def predict_proba(self, X):
-        """Predict probabilities for each class"""
-        z = np.dot(X, self.weights)
-        return self._softmax(z)
-    
+
+    # Hàm dự đoán nhãn cho dữ liệu mới
     def predict(self, X):
-        """Predict class labels"""
-        proba = self.predict_proba(X)
-        return np.argmax(proba, axis=1)
+        linear_model = np.dot(X, self.weights)
+        y_predicted_prob = self.softmax(linear_model)
+        y_predicted_cls = np.argmax(y_predicted_prob, axis=1)
+        return y_predicted_cls
 
-
+# Hàm chính để chạy toàn bộ quy trình
 def main():
     print("="*60)
     print("ASSIGNMENT 2: Softmax Regression (Digits 0-9)")
     print("="*60)
-    
-    # 1. Load data
+    print("\n Đang tải dữ liệu MNIST...")
     train_images, train_labels, test_images, test_labels = load_mnist_data()
-    
-    # 2. Preprocess (Flatten, Normalize, Add Bias, One-hot encoding)
+
+    print("\n Đang tiền xử lý dữ liệu (Multiclass & One-Hot Encoding)...")
     X_train, y_train_onehot = preprocess_multiclass(train_images, train_labels, num_classes=10)
     X_test, y_test_onehot = preprocess_multiclass(test_images, test_labels, num_classes=10)
     
-    print(f"\nTraining data shape: {X_train.shape}")
-    print(f"Test data shape: {X_test.shape}")
-    
-    # 3. Train model
+    print(f"Kích thước tập huấn luyện: {X_train.shape}")
+    print(f"Kích thước tập kiểm tra: {X_test.shape}")
+    print("\n[INFO] Bắt đầu huấn luyện Softmax Regression...")
     model = SoftmaxRegression(epoch=500, lr=0.01, num_classes=10)
     model.fit(X_train, y_train_onehot)
-    
-    # 4. Plot loss
+    print("-> Huấn luyện xong!")
     plt.figure(figsize=(10, 6))
-    plt.plot(model.losses)
-    plt.xlabel('Epoch')
-    plt.ylabel('Cross-Entropy Loss')
-    plt.title('Training Loss - Softmax Regression (Digits 0-9)')
-    plt.grid(True, alpha=0.3)
+    plt.plot(model.losses, color='red', linewidth=2)
+    plt.xlabel('Vòng lặp (Epoch)', fontsize=12)
+    plt.ylabel('Hàm suy hao (Cross-Entropy Loss)', fontsize=12)
+    plt.title('Biểu đồ huấn luyện - Softmax Regression (0-9)', fontsize=14, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.6)
     plt.show()
     
-    # 5. Evaluate
-    y_pred = model.predict(X_test)
+    print("\n Đang đánh giá trên tập Test...")
+    y_pred = model.predict(X_test) # Lúc này y_pred đã được argmax chuyển về dạng số nguyên (0->9)
     metrics = calculate_multiclass_metrics(test_labels, y_pred)
     
-    print(f"\nTest Results:")
-    print(f"  Accuracy:                  {metrics.get('accuracy', np.mean(y_pred == test_labels)):.4f}")
+    print(f"\nKẾT QUẢ TEST:")
+    print("-" * 40)
+    print(f"  Độ chính xác (Accuracy):   {np.mean(y_pred == test_labels):.4f}")
     
-    # Hiển thị thêm các metrics nâng cao nếu dictionary metrics hỗ trợ
     if 'macro' in metrics:
-        print(f"  Macro Average - Precision: {metrics['macro']['precision']:.4f}")
-        print(f"  Macro Average - Recall:    {metrics['macro']['recall']:.4f}")
-        print(f"  Macro Average - F1:        {metrics['macro']['f1']:.4f}")
-        print(f"  Micro Average - Precision: {metrics['micro']['precision']:.4f}")
-        print(f"  Micro Average - Recall:    {metrics['micro']['recall']:.4f}")
-        print(f"  Micro Average - F1:        {metrics['micro']['f1']:.4f}")
+        print(f"  Macro Avg - Precision:     {metrics['macro']['precision']:.4f}")
+        print(f"  Macro Avg - Recall:        {metrics['macro']['recall']:.4f}")
+        print(f"  Macro Avg - F1-Score:      {metrics['macro']['f1']:.4f}")
 
-    # 6. Sample Predictions
-    print("\n--- Sample Predictions (First 10 images) ---")
+    # 6. In thử một vài kết quả dự đoán (10 mẫu đầu tiên)
+    print("\n--- Dự đoán trực quan (10 ảnh đầu tiên) ---")
     for i in range(min(10, len(X_test))):
         true_label = test_labels[i]
         pred_label = y_pred[i]
-        status = "✓" if true_label == pred_label else "✗"
-        print(f"  Sample {i+1:2d}: True={true_label}, Pred={pred_label} {status}")
+        status = "Đúng" if true_label == pred_label else "Sai"
+        print(f"  Ảnh số {i+1:2d}: Thực tế = {true_label} | Dự đoán = {pred_label} {status}")
 
     print("\n" + "="*60)
-    print("✅ ASSIGNMENT 2 HOÀN THÀNH!")
+    print("ASSIGNMENT 2 HOÀN THÀNH!")
     print("="*60)
 
 if __name__ == "__main__":
